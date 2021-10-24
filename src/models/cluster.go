@@ -117,7 +117,6 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 	decoder := json.NewDecoder(bytes.NewReader(params[1].([]byte)))
 	decoder.UseNumber()
 	decoder.Decode(&rules)
-	fmt.Println("cluster.go: rules", rules)
 
 	nodeNamePrefix := "Node"
 	endNamePrefix := "InternalClient"
@@ -146,7 +145,8 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 
 func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
 	tableName := params[0].(string)
-	row := params[1].([]Row)
+	row := params[1].(Row)
+	*reply = "1 Not Insert"
 
 	endNamePrefix := "InternalClient"
 	for _, nodeId := range c.nodeIds {
@@ -154,9 +154,10 @@ func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
 		end := c.network.MakeEnd(endName)
 		c.network.Connect(endName, nodeId)
 		c.network.Enable(endName, true)
-
-		for _, v := range row {
-			end.Call("Node.RPCInsert", []interface{}{tableName, v}, reply)
+		replyMsg := ""
+		end.Call("Node.RPCInsert", []interface{}{tableName, row}, &replyMsg)
+		if replyMsg[0] == '0' {
+			*reply = "0 OK"
 		}
 	}
 }

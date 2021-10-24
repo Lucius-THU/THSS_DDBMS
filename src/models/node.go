@@ -122,7 +122,7 @@ func (n *Node) RPCCreateTable(args []interface{}, reply *string) {
 							predicate[k][i].RealType = cs.DataType
 							continue
 						} else {
-							*reply = fmt.Sprintf("1 Operator Not Suitable For null")
+							*reply = "1 Operator Not Suitable For null"
 							return
 						}
 					}
@@ -143,7 +143,7 @@ func (n *Node) RPCCreateTable(args []interface{}, reply *string) {
 						predicate[k][i].StringValue, ok = value.Val.(string)
 					}
 					if !ok {
-						*reply = fmt.Sprintf("1 TypeError")
+						*reply = "1 TypeError"
 						return
 					}
 					predicate[k][i].RealType = cs.DataType
@@ -158,9 +158,9 @@ func (n *Node) RPCCreateTable(args []interface{}, reply *string) {
 		if t, ok := n.TableMap[schema.TableName]; ok {
 			t.predicate = &predicate
 			t.fullSchema = &fullSchema
-			*reply = fmt.Sprintf("0 OK")
+			*reply = "0 OK"
 		} else {
-			*reply = fmt.Sprintf("1 Create Table Fail")
+			*reply = "1 Create Table Fail"
 		}
 	}
 }
@@ -174,7 +174,7 @@ func (n *Node) RPCInsert(args []interface{}, reply *string) {
 			if atoms, exist := (*t.predicate)[t.fullSchema.ColumnSchemas[i].Name]; exist {
 				for _, atom := range atoms {
 					if !atom.Check(v) {
-						*reply = fmt.Sprintf("1 Predicate Check Fail")
+						*reply = "1 Predicate Check Fail"
 						return
 					}
 				}
@@ -193,7 +193,7 @@ func (n *Node) RPCInsert(args []interface{}, reply *string) {
 			return
 		}
 	}
-	*reply = fmt.Sprintf("0 OK")
+	*reply = "0 OK"
 }
 
 func OpIsEqualOrNotEqual(op string) bool {
