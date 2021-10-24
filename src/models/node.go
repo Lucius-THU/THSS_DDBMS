@@ -29,7 +29,7 @@ func (n *Node) SayHello(args interface{}, reply *string) {
 
 // CreateTable creates a Table on this node with the provided schema. It returns nil if the table is created
 // successfully, or an error if another table with the same name already exists.
-func (n *Node) CreateTable(schema *TableSchema, predicate *Predicate, fullSchema *TableSchema) error {
+func (n *Node) CreateTable(schema *TableSchema) error {
 	// check if the table already exists
 	if _, ok := n.TableMap[schema.TableName]; ok {
 		return errors.New("table already exists")
@@ -38,8 +38,6 @@ func (n *Node) CreateTable(schema *TableSchema, predicate *Predicate, fullSchema
 	t := NewTable(
 		schema,
 		NewMemoryListRowStore(),
-		predicate,
-		fullSchema,
 	)
 	n.TableMap[schema.TableName] = t
 	return nil
@@ -154,10 +152,16 @@ func (n *Node) RPCCreateTable(args []interface{}, reply *string) {
 			}
 		}
 	}
-	if err := n.CreateTable(schema, predicate, fullSchema); err != nil {
+	if err := n.CreateTable(schema); err != nil {
 		*reply = fmt.Sprintf("1 %v", err)
 	} else {
-		*reply = fmt.Sprintf("0 OK")
+		if t, ok := n.TableMap[schema.TableName]; ok {
+			t.predicate = predicate
+			t.fullSchema = fullSchema
+			*reply = fmt.Sprintf("0 OK")
+		} else {
+			*reply = fmt.Sprintf("1 Create Table Fail")
+		}
 	}
 }
 
