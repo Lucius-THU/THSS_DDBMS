@@ -1,10 +1,13 @@
 package models
 
 import (
-	"../labgob"
-	"../labrpc"
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strconv"
+
+	"../labgob"
+	"../labrpc"
 )
 
 // Cluster consists of a group of nodes to manage distributed tables defined in models/table.go.
@@ -101,18 +104,56 @@ func (c *Cluster) SayHello(visitor string, reply *string) {
 
 // Join all tables in the given list using NATURAL JOIN (join on the common columns), and return the joined result
 // as a list of rows and set it to reply.
-func (c* Cluster) Join(tableNames []string, reply *Dataset) {
+func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 	//TODO lab2
 }
 
-func (c* Cluster) BuildTable(params []interface{}, reply *string) {
-	//schema := params[0]
-	//rules := params[1]
+func (c *Cluster) BuildTable(params []interface{}, reply *string) {
+	schema := params[0].(*TableSchema)
+	rules := make(map[string]Rule)
 
+	decoder := json.NewDecoder(bytes.NewReader(params[1].([]byte)))
+	decoder.UseNumber()
+	decoder.Decode(&rules)
+
+	nodeNamePrefix := "Node"
+	endNamePrefix := "InternalClient"
+	for key, value := range rules {
+		nodeId := nodeNamePrefix + key
+		ts := &TableSchema{TableName: schema.TableName, ColumnSchemas: make([]ColumnSchema, 0)}
+		for _, columnName := range value.column {
+			for _, cs := range schema.ColumnSchemas {
+				if cs.Name == columnName {
+					ts.ColumnSchemas = append(ts.ColumnSchemas, cs)
+					break
+				}
+			}
+		}
+
+		endName := endNamePrefix + nodeId
+		end := c.network.MakeEnd(endName)
+		c.network.Connect(endName, nodeId)
+		c.network.Enable(endName, true)
+		end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema.ColumnSchemas}, reply)
+		if (*reply)[0] != '0' {
+			return
+		}
+	}
 }
 
-func (c* Cluster) FragmentWrite(params []interface{}, reply *string) {
-	//tableName := params[0]
-	//row := params[1]
+func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
+	tableName := params[0].(string)
+	row := params[1].([]Row)
 
+	endNamePrefix := "InternalClient"
+	for _, nodeId := range c.nodeIds {
+		endName := endNamePrefix + nodeId
+		end := c.network.MakeEnd(endName)
+		c.network.Connect(endName, nodeId)
+		c.network.Enable(endName, true)
+
+		for _, v := range row {
+			end.Call("Node.RPCInsert", []interface{}{tableName, v}, reply)
+		}
+	}
 }

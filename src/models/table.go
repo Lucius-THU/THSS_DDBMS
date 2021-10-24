@@ -3,12 +3,13 @@ package models
 // Table is an in-memory two-dimensional table which consists of a table schema and a row store
 // it is not yet a relational table as it does not support primary keys or other constraints.
 type Table struct {
-	schema *TableSchema
-	rowStore RowStore
+	schema, fullSchema *TableSchema
+	rowStore           RowStore
+	predicate          *Predicate
 }
 
-func NewTable(schema *TableSchema, rowStore RowStore) *Table {
-	return &Table{schema: schema, rowStore: rowStore}
+func NewTable(schema *TableSchema, rowStore RowStore, predicate *Predicate, fullSchema *TableSchema) *Table {
+	return &Table{schema: schema, rowStore: rowStore, predicate: predicate, fullSchema: fullSchema}
 }
 
 // GetColumnCount returns the number of columns in the table.
@@ -17,7 +18,7 @@ func (t *Table) GetColumnCount() int {
 }
 
 // GetColumnName returns the name of the ith column, or an empty string if the index is invalid.
-func (t *Table) GetColumnName(i int) string  {
+func (t *Table) GetColumnName(i int) string {
 	if i < 0 || i >= len(t.schema.ColumnSchemas) {
 		return ""
 	}

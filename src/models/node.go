@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -28,7 +29,7 @@ func (n *Node) SayHello(args interface{}, reply *string) {
 
 // CreateTable creates a Table on this node with the provided schema. It returns nil if the table is created
 // successfully, or an error if another table with the same name already exists.
-func (n *Node) CreateTable(schema *TableSchema) error {
+func (n *Node) CreateTable(schema *TableSchema, predicate *Predicate, fullSchema *TableSchema) error {
 	// check if the table already exists
 	if _, ok := n.TableMap[schema.TableName]; ok {
 		return errors.New("table already exists")
@@ -37,6 +38,8 @@ func (n *Node) CreateTable(schema *TableSchema) error {
 	t := NewTable(
 		schema,
 		NewMemoryListRowStore(),
+		predicate,
+		fullSchema,
 	)
 	n.TableMap[schema.TableName] = t
 	return nil
@@ -106,4 +109,89 @@ func (n *Node) ScanTable(tableName string, dataset *Dataset) {
 		resultSet.Schema = *t.schema
 		*dataset = resultSet
 	}
+}
+
+func (n *Node) RPCCreateTable(args []interface{}, reply *string) {
+	schema := args[0].(*TableSchema)
+	predicate := args[1].(*Predicate)
+	fullSchema := args[2].(*TableSchema)
+	for k, v := range *predicate {
+		for _, cs := range fullSchema.ColumnSchemas {
+			if cs.Name == k {
+				for i, value := range v {
+					if value.val == nil {
+						if OpIsEqualOrNotEqual(value.op) {
+							(*predicate)[k][i].realType = cs.DataType
+							continue
+						} else {
+							*reply = fmt.Sprintf("1 Operator Not Suitable For null")
+							return
+						}
+					}
+					var ok bool
+					var t json.Number
+					switch cs.DataType {
+					case TypeInt32, TypeInt64, TypeFloat, TypeDouble:
+						(*predicate)[k][i].numberValue, ok = value.val.(json.Number)
+						t, ok = value.val.(json.Number)
+						if _, err1 := t.Float64(); err1 != nil {
+							if _, err2 := t.Int64(); err2 != nil {
+								ok = false
+							}
+						}
+					case TypeBoolean:
+						(*predicate)[k][i].boolValue, ok = value.val.(bool)
+					case TypeString:
+						(*predicate)[k][i].stringValue, ok = value.val.(string)
+					}
+					if !ok {
+						*reply = fmt.Sprintf("1 TypeError")
+						return
+					}
+					(*predicate)[k][i].realType = cs.DataType
+				}
+				break
+			}
+		}
+	}
+	if err := n.CreateTable(schema, predicate, fullSchema); err != nil {
+		*reply = fmt.Sprintf("1 %v", err)
+	} else {
+		*reply = fmt.Sprintf("0 OK")
+	}
+}
+
+func (n *Node) RPCInsert(args []interface{}, reply *string) {
+	tableName := args[0].(string)
+	if t, ok := n.TableMap[tableName]; ok {
+		row := args[1].(Row)
+		var subRow Row
+		for i, v := range row {
+			if atoms, exist := (*t.predicate)[t.fullSchema.ColumnSchemas[i].Name]; exist {
+				for _, atom := range atoms {
+					if !atom.Check(v) {
+						*reply = fmt.Sprintf("1 Predicate Check Fail")
+						return
+					}
+				}
+			}
+		}
+		for _, v := range t.schema.ColumnSchemas {
+			for i, cs := range t.fullSchema.ColumnSchemas {
+				if cs.Name == v.Name {
+					subRow = append(subRow, row[i])
+					break
+				}
+			}
+		}
+		if err := n.Insert(tableName, &subRow); err != nil {
+			*reply = fmt.Sprintf("1 %v", err)
+			return
+		}
+	}
+	*reply = fmt.Sprintf("0 OK")
+}
+
+func OpIsEqualOrNotEqual(op string) bool {
+	return op == "==" || op == "=" || op == "!=" || op == "<>" || op == ">=" || op == "<="
 }
