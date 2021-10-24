@@ -41,6 +41,8 @@ type Cluster struct {
 func NewCluster(nodeNum int, network *labrpc.Network, clusterName string) *Cluster {
 	labgob.Register(TableSchema{})
 	labgob.Register(Row{})
+	labgob.Register(Predicate{})
+	labgob.Register(json.Number(""))
 
 	nodeIds := make([]string, nodeNum)
 	nodeNamePrefix := "Node"
@@ -109,19 +111,20 @@ func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 }
 
 func (c *Cluster) BuildTable(params []interface{}, reply *string) {
-	schema := params[0].(*TableSchema)
+	schema := params[0].(TableSchema)
 	rules := make(map[string]Rule)
 
 	decoder := json.NewDecoder(bytes.NewReader(params[1].([]byte)))
 	decoder.UseNumber()
 	decoder.Decode(&rules)
+	fmt.Println("cluster.go: rules", rules)
 
 	nodeNamePrefix := "Node"
 	endNamePrefix := "InternalClient"
 	for key, value := range rules {
 		nodeId := nodeNamePrefix + key
 		ts := &TableSchema{TableName: schema.TableName, ColumnSchemas: make([]ColumnSchema, 0)}
-		for _, columnName := range value.column {
+		for _, columnName := range value.Column {
 			for _, cs := range schema.ColumnSchemas {
 				if cs.Name == columnName {
 					ts.ColumnSchemas = append(ts.ColumnSchemas, cs)
@@ -134,7 +137,7 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 		end := c.network.MakeEnd(endName)
 		c.network.Connect(endName, nodeId)
 		c.network.Enable(endName, true)
-		end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema.ColumnSchemas}, reply)
+		end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema}, reply)
 		if (*reply)[0] != '0' {
 			return
 		}

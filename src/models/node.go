@@ -110,16 +110,16 @@ func (n *Node) ScanTable(tableName string, dataset *Dataset) {
 }
 
 func (n *Node) RPCCreateTable(args []interface{}, reply *string) {
-	schema := args[0].(*TableSchema)
-	predicate := args[1].(*Predicate)
-	fullSchema := args[2].(*TableSchema)
-	for k, v := range *predicate {
+	schema := args[0].(TableSchema)
+	predicate := args[1].(Predicate)
+	fullSchema := args[2].(TableSchema)
+	for k, v := range predicate {
 		for _, cs := range fullSchema.ColumnSchemas {
 			if cs.Name == k {
 				for i, value := range v {
-					if value.val == nil {
-						if OpIsEqualOrNotEqual(value.op) {
-							(*predicate)[k][i].realType = cs.DataType
+					if value.Val == nil {
+						if OpIsEqualOrNotEqual(value.Op) {
+							predicate[k][i].RealType = cs.DataType
 							continue
 						} else {
 							*reply = fmt.Sprintf("1 Operator Not Suitable For null")
@@ -127,37 +127,37 @@ func (n *Node) RPCCreateTable(args []interface{}, reply *string) {
 						}
 					}
 					var ok bool
-					var t json.Number
 					switch cs.DataType {
 					case TypeInt32, TypeInt64, TypeFloat, TypeDouble:
-						(*predicate)[k][i].numberValue, ok = value.val.(json.Number)
-						t, ok = value.val.(json.Number)
-						if _, err1 := t.Float64(); err1 != nil {
-							if _, err2 := t.Int64(); err2 != nil {
-								ok = false
+						predicate[k][i].NumberValue, ok = value.Val.(json.Number)
+						if ok {
+							if _, err1 := predicate[k][i].NumberValue.Float64(); err1 != nil {
+								if _, err2 := predicate[k][i].NumberValue.Int64(); err2 != nil {
+									ok = false
+								}
 							}
 						}
 					case TypeBoolean:
-						(*predicate)[k][i].boolValue, ok = value.val.(bool)
+						predicate[k][i].BoolValue, ok = value.Val.(bool)
 					case TypeString:
-						(*predicate)[k][i].stringValue, ok = value.val.(string)
+						predicate[k][i].StringValue, ok = value.Val.(string)
 					}
 					if !ok {
 						*reply = fmt.Sprintf("1 TypeError")
 						return
 					}
-					(*predicate)[k][i].realType = cs.DataType
+					predicate[k][i].RealType = cs.DataType
 				}
 				break
 			}
 		}
 	}
-	if err := n.CreateTable(schema); err != nil {
+	if err := n.CreateTable(&schema); err != nil {
 		*reply = fmt.Sprintf("1 %v", err)
 	} else {
 		if t, ok := n.TableMap[schema.TableName]; ok {
-			t.predicate = predicate
-			t.fullSchema = fullSchema
+			t.predicate = &predicate
+			t.fullSchema = &fullSchema
 			*reply = fmt.Sprintf("0 OK")
 		} else {
 			*reply = fmt.Sprintf("1 Create Table Fail")

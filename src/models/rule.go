@@ -8,48 +8,48 @@ import (
 
 type Rule struct {
 	Predicate
-	column []string
+	Column []string
 }
 
 type Predicate map[string][]Atom
 
 type Atom struct {
-	op  string
-	val interface{}
+	Op  string
+	Val interface{}
 	RealValue
 }
 
 type RealValue struct {
-	boolValue   bool
-	numberValue json.Number
-	stringValue string
-	realType    int
+	BoolValue   bool
+	NumberValue json.Number
+	StringValue string
+	RealType    int
 }
 
 func (n *Atom) Check(value interface{}) bool {
 	if value == nil {
-		return (n.val == nil && (n.op == "==" || n.op == "=" || n.op == ">=" || n.op == "<=")) || (n.val != nil && (n.op == "!=" || n.op == "<>"))
+		return (n.Val == nil && (n.Op == "==" || n.Op == "=" || n.Op == ">=" || n.Op == "<=")) || (n.Val != nil && (n.Op == "!=" || n.Op == "<>"))
 	}
 	var b RealValue
-	if n.val == nil {
-		return checkType(value, n.realType, &b) && (n.op == "!=" || n.op == "<>")
+	if n.Val == nil {
+		return checkType(value, n.RealType, &b) && (n.Op == "!=" || n.Op == "<>")
 	}
 
-	if checkType(value, n.realType, &b) {
+	if checkType(value, n.RealType, &b) {
 		return false
 	}
-	if n.op == "==" || n.op == "=" {
-		return n.val == value
+	if n.Op == "==" || n.Op == "=" {
+		return n.Val == value
 	}
-	if n.op == "!=" || n.op == "<>" {
-		return n.val != value
+	if n.Op == "!=" || n.Op == "<>" {
+		return n.Val != value
 	}
-	switch n.realType {
+	switch n.RealType {
 	case TypeInt32, TypeInt64:
-		if a, err1 := b.numberValue.Int64(); err1 == nil {
-			if v1, err2 := n.numberValue.Float64(); err2 == nil {
+		if a, err1 := b.NumberValue.Int64(); err1 == nil {
+			if v1, err2 := n.NumberValue.Float64(); err2 == nil {
 				t := float64(a)
-				switch n.op {
+				switch n.Op {
 				case "<":
 					return t < v1
 				case "<=":
@@ -59,8 +59,8 @@ func (n *Atom) Check(value interface{}) bool {
 				case ">=":
 					return t >= v1
 				}
-			} else if v2, err3 := n.numberValue.Int64(); err3 == nil {
-				switch n.op {
+			} else if v2, err3 := n.NumberValue.Int64(); err3 == nil {
+				switch n.Op {
 				case "<":
 					return a < v2
 				case "<=":
@@ -73,9 +73,9 @@ func (n *Atom) Check(value interface{}) bool {
 			}
 		}
 	case TypeFloat, TypeDouble:
-		if a, err1 := b.numberValue.Float64(); err1 == nil {
-			if v1, err2 := n.numberValue.Float64(); err2 == nil {
-				switch n.op {
+		if a, err1 := b.NumberValue.Float64(); err1 == nil {
+			if v1, err2 := n.NumberValue.Float64(); err2 == nil {
+				switch n.Op {
 				case "<":
 					return a < v1
 				case "<=":
@@ -85,9 +85,9 @@ func (n *Atom) Check(value interface{}) bool {
 				case ">=":
 					return a >= v1
 				}
-			} else if v2, err3 := n.numberValue.Int64(); err3 == nil {
+			} else if v2, err3 := n.NumberValue.Int64(); err3 == nil {
 				t := float64(v2)
-				switch n.op {
+				switch n.Op {
 				case "<":
 					return a < t
 				case "<=":
@@ -100,19 +100,19 @@ func (n *Atom) Check(value interface{}) bool {
 			}
 		}
 	case TypeBoolean:
-		if n.op == "<=" || n.op == ">=" {
-			return b.boolValue == n.boolValue
+		if n.Op == "<=" || n.Op == ">=" {
+			return b.BoolValue == n.BoolValue
 		}
 	case TypeString:
-		switch n.op {
+		switch n.Op {
 		case "<":
-			return b.stringValue < n.stringValue
+			return b.StringValue < n.StringValue
 		case "<=":
-			return b.stringValue <= n.stringValue
+			return b.StringValue <= n.StringValue
 		case ">":
-			return b.stringValue > n.stringValue
+			return b.StringValue > n.StringValue
 		case ">=":
-			return b.stringValue >= n.stringValue
+			return b.StringValue >= n.StringValue
 		}
 	}
 	return false
@@ -122,24 +122,24 @@ func checkType(value interface{}, typeName int, t *RealValue) bool {
 	var ans bool
 	switch value.(type) {
 	case json.Number:
-		t.numberValue = value.(json.Number)
+		t.NumberValue = value.(json.Number)
 		switch typeName {
 		case TypeInt32:
-			v, err := t.numberValue.Int64()
+			v, err := t.NumberValue.Int64()
 			ans = err == nil && v >= math.MinInt32 && v <= math.MaxInt32
 		case TypeInt64:
-			_, err := t.numberValue.Int64()
+			_, err := t.NumberValue.Int64()
 			ans = err == nil
 		case TypeFloat:
-			v, err := t.numberValue.Float64()
+			v, err := t.NumberValue.Float64()
 			ans = err == nil && math.Abs(v) <= math.MaxFloat32
 		case TypeDouble:
-			_, err := t.numberValue.Float64()
+			_, err := t.NumberValue.Float64()
 			ans = err == nil
 		}
 	case int:
 		v := value.(int)
-		t.numberValue = json.Number(strconv.Itoa(v))
+		t.NumberValue = json.Number(strconv.Itoa(v))
 		switch typeName {
 		case TypeInt32:
 			ans = v >= math.MinInt32 && v <= math.MaxInt32
@@ -152,14 +152,14 @@ func checkType(value interface{}, typeName int, t *RealValue) bool {
 		}
 	case int32:
 		v := value.(int32)
-		t.numberValue = json.Number(strconv.Itoa(int(v)))
+		t.NumberValue = json.Number(strconv.Itoa(int(v)))
 		if typeName == TypeFloat {
 			ans = int32(float32(v)) == v
 		}
 		ans = typeName == TypeInt32 || typeName == TypeInt64 || typeName == TypeDouble
 	case int64:
 		v := value.(int64)
-		t.numberValue = json.Number(strconv.Itoa(int(v)))
+		t.NumberValue = json.Number(strconv.Itoa(int(v)))
 		switch typeName {
 		case TypeInt32:
 			ans = v >= math.MinInt32 && v <= math.MaxInt32
@@ -178,15 +178,15 @@ func checkType(value interface{}, typeName int, t *RealValue) bool {
 		case TypeInt64:
 			ans = v <= math.MaxInt64 && v >= math.MinInt64 && float32(int64(v)) == v
 		case TypeFloat, TypeDouble:
-			t.numberValue = json.Number(strconv.FormatFloat(float64(v), 'f', -1, 32))
+			t.NumberValue = json.Number(strconv.FormatFloat(float64(v), 'f', -1, 32))
 			ans = true
 		}
 		if ans && (typeName == TypeInt32 || typeName == TypeInt64) {
-			t.numberValue = json.Number(strconv.Itoa(int(v)))
+			t.NumberValue = json.Number(strconv.Itoa(int(v)))
 		}
 	case float64:
 		v := value.(float64)
-		t.numberValue = json.Number(strconv.FormatFloat(v, 'f', -1, 64))
+		t.NumberValue = json.Number(strconv.FormatFloat(v, 'f', -1, 64))
 		switch typeName {
 		case TypeInt32:
 			ans = v <= math.MaxInt32 && v >= math.MinInt32 && float64(int32(v)) == v
@@ -198,13 +198,13 @@ func checkType(value interface{}, typeName int, t *RealValue) bool {
 			ans = true
 		}
 		if ans && (typeName == TypeInt32 || typeName == TypeInt64) {
-			t.numberValue = json.Number(strconv.Itoa(int(v)))
+			t.NumberValue = json.Number(strconv.Itoa(int(v)))
 		}
 	case bool:
-		t.boolValue = value.(bool)
+		t.BoolValue = value.(bool)
 		ans = typeName == TypeBoolean
 	case string:
-		t.stringValue = value.(string)
+		t.StringValue = value.(string)
 		ans = typeName == TypeString
 	}
 	return ans

@@ -8,8 +8,8 @@ type Table struct {
 	predicate          *Predicate
 }
 
-func NewTable(schema *TableSchema, rowStore RowStore, predicate *Predicate, fullSchema *TableSchema) *Table {
-	return &Table{schema: schema, rowStore: rowStore, predicate: predicate, fullSchema: fullSchema}
+func NewTable(schema *TableSchema, rowStore RowStore) *Table {
+	return &Table{schema: schema, rowStore: rowStore}
 }
 
 // GetColumnCount returns the number of columns in the table.
