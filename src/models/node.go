@@ -171,6 +171,10 @@ func (n *Node) RPCInsert(args []interface{}, reply *string) {
 		row := args[1].(Row)
 		var subRow Row
 		for i, v := range row {
+			if !CheckType(v, t.fullSchema.ColumnSchemas[i].DataType) {
+				*reply = fmt.Sprintf("1 %v's value doesn't conform its type", t.fullSchema.ColumnSchemas[i].Name)
+				return
+			}
 			if atoms, exist := (*t.predicate)[t.fullSchema.ColumnSchemas[i].Name]; exist {
 				for _, atom := range atoms {
 					if !atom.Check(v) {
