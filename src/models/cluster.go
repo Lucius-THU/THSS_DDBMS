@@ -8,6 +8,7 @@ import (
 
 	"../labgob"
 	"../labrpc"
+	"github.com/google/uuid"
 )
 
 // Cluster consists of a group of nodes to manage distributed tables defined in models/table.go.
@@ -112,6 +113,7 @@ func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 
 func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 	schema := params[0].(TableSchema)
+	schema.ColumnSchemas = append(schema.ColumnSchemas, ColumnSchema{Name: "id", DataType: TypeString})
 	rules := make(map[string]Rule)
 
 	decoder := json.NewDecoder(bytes.NewReader(params[1].([]byte)))
@@ -123,6 +125,7 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 	for key, value := range rules {
 		nodeId := nodeNamePrefix + key
 		ts := &TableSchema{TableName: schema.TableName, ColumnSchemas: make([]ColumnSchema, 0)}
+		ts.ColumnSchemas = append(ts.ColumnSchemas, ColumnSchema{Name: "id", DataType: TypeString})
 		for _, columnName := range value.Column {
 			for _, cs := range schema.ColumnSchemas {
 				if cs.Name == columnName {
@@ -146,6 +149,7 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
 	tableName := params[0].(string)
 	row := params[1].(Row)
+	row = append(row, uuid.New().String())
 	*reply = "1 Not Insert"
 
 	endNamePrefix := "InternalClient"
