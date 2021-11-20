@@ -108,6 +108,123 @@ func (c *Cluster) SayHello(visitor string, reply *string) {
 // as a list of rows and set it to reply.
 func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 	//TODO lab2
+	endNamePrefix := "InternalClient"
+	// 先获取表头
+	table_schema_judge1 := false
+	table_schema_judge2 := false
+	table_schemas1 := make([]ColumnSchema, 0)
+	table_schemas2 := make([]ColumnSchema, 0)
+	for _, nodeId := range c.nodeIds {
+		if table_schema_judge1 && table_schema_judge2 {
+			break
+		}
+		endName := endNamePrefix + nodeId
+		end := c.network.MakeEnd(endName)
+		c.network.Connect(endName, nodeId)
+		c.network.Enable(endName, true)
+		table := Dataset{}
+		if table_schema_judge1 == false {
+			end.Call("Node.ScanTable", tableNames[0], &table)
+			if table.Schema.TableName != "" {
+				table_schema_judge1 = true
+				table_schemas1 = append(table_schemas1, table.Schema.ColumnSchemas...)
+			}
+		}
+		table = Dataset{}
+		if table_schema_judge2 == false {
+			end.Call("Node.ScanTable", tableNames[1], &table)
+			if table.Schema.TableName != "" {
+				table_schemas2 = append(table_schemas2, table.Schema.ColumnSchemas...)
+				table_schema_judge2 = true
+			}
+		}
+	}
+
+	// 获取相同列的索引
+	same_columns1 := make([]int, 0)
+	same_columns2 := make([]int, 0)
+
+	for ind1, col1 := range table_schemas1 {
+		for ind2, col2 := range table_schemas2 {
+			if col1 == col2 {
+				same_columns1 = append(same_columns1, ind1)
+				same_columns2 = append(same_columns2, ind2)
+				break
+			}
+		}
+	}
+	// 构建新的表头
+	result_columns := table_schemas1 // 添加表一表头
+	// 添加表2的表头
+	i := 0
+	same_size := len(same_columns2)
+	for ind1, col1 := range table_schemas2 {
+		if i < same_size && ind1 == same_columns2[i] {
+			i++
+			continue
+		}
+		result_columns = append(result_columns, col1)
+	}
+
+	// 开始根据节点连接数据
+	result_rows := make([]Row, 0)
+	for _, nodeId1 := range c.nodeIds {
+		endName1 := endNamePrefix + nodeId1
+		end1 := c.network.MakeEnd(endName1)
+		c.network.Connect(endName1, nodeId1)
+		c.network.Enable(endName1, true)
+		table1 := Dataset{}
+		end1.Call("Node.ScanTable", tableNames[0], &table1)
+		if table1.Schema.TableName == "" {
+			continue
+		}
+		for _, nodeId2 := range c.nodeIds {
+			endName2 := endNamePrefix + nodeId2
+			end2 := c.network.MakeEnd(endName2)
+			c.network.Connect(endName2, nodeId2)
+			c.network.Enable(endName2, true)
+			table2 := Dataset{}
+			end2.Call("Node.ScanTable", tableNames[1], &table2)
+			if table2.Schema.TableName == "" {
+				continue
+			}
+
+			// 开始连接
+			tableRows1 := table1.Rows
+			tableRows2 := table2.Rows
+
+			for _, val1 := range tableRows1 { // 直接遍历四个值
+				for _, val2 := range tableRows2 {
+					all_same := true
+					for i = 0; i < same_size; i++ {
+						if val1[same_columns1[i]] != val2[same_columns2[i]] {
+							all_same = false
+							break
+						}
+					}
+					// 需要连接的情况
+					if all_same {
+						var subRow Row = val1
+						k := 0
+						j := 0
+						for j = 0; j < len(val2); j++ {
+							if k < same_size && j == same_columns2[k] {
+								k++
+								continue
+							}
+							subRow = append(subRow, val2[j])
+						}
+						result_rows = append(result_rows, subRow)
+						//fmt.Println("lalala")
+					}
+				}
+			}
+		}
+	}
+	result := Dataset{}
+	result.Schema = TableSchema{TableName: "", ColumnSchemas: result_columns}
+	result.Rows = result_rows
+	*reply = result
 }
 
 func (c *Cluster) BuildTable(params []interface{}, reply *string) {

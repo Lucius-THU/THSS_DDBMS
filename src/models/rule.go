@@ -181,7 +181,7 @@ func CheckType(value interface{}, typeName int) bool {
 		case TypeInt64:
 			ans = v <= math.MaxInt64 && v >= math.MinInt64 && float64(int64(v)) == v
 		case TypeFloat:
-			ans = math.Abs(v) <= math.MaxFloat32 && float64(float32(v)) == v
+			ans = math.Abs(v) <= math.MaxFloat32
 		case TypeDouble:
 			ans = true
 		}

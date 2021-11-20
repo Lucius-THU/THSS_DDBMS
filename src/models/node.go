@@ -203,3 +203,38 @@ func (n *Node) RPCInsert(args []interface{}, reply *string) {
 func OpIsEqualOrNotEqual(op string) bool {
 	return op == "==" || op == "=" || op == "!=" || op == "<>" || op == ">=" || op == "<="
 }
+
+func (n *Node) RPCJoin(args []interface{}, reply *string) {
+	tableName := args[0].(string)
+	if t, ok := n.TableMap[tableName]; ok {
+		row := args[1].(Row)
+		var subRow Row
+		for i, v := range row {
+			if !CheckType(v, t.fullSchema.ColumnSchemas[i].DataType) {
+				*reply = fmt.Sprintf("1 %v's value doesn't conform its type", t.fullSchema.ColumnSchemas[i].Name)
+				return
+			}
+			if atoms, exist := (*t.predicate)[t.fullSchema.ColumnSchemas[i].Name]; exist {
+				for _, atom := range atoms {
+					if !atom.Check(v) {
+						*reply = "1 Predicate Check Fail"
+						return
+					}
+				}
+			}
+		}
+		for _, v := range t.schema.ColumnSchemas {
+			for i, cs := range t.fullSchema.ColumnSchemas {
+				if cs.Name == v.Name {
+					subRow = append(subRow, row[i])
+					break
+				}
+			}
+		}
+		if err := n.Insert(tableName, &subRow); err != nil {
+			*reply = fmt.Sprintf("1 %v", err)
+			return
+		}
+	}
+	*reply = "0 OK"
+}
