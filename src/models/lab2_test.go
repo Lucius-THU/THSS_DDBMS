@@ -144,7 +144,11 @@ func TestLab2NonOverlapping(t *testing.T) {
 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
 	expectedDataset := Dataset{
 		Schema: joinedTableSchema,
+<<<<<<< HEAD
 		Rows:   joinedTableContent,
+=======
+		Rows: joinedTableContent,
+>>>>>>> 9b75ef97574a916d7015ee75c2f31d31047a65d8
 	}
 	if !compareDataset(expectedDataset, results) {
 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
@@ -210,7 +214,11 @@ func TestLab2FullyOverlapping(t *testing.T) {
 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
 	expectedDataset := Dataset{
 		Schema: joinedTableSchema,
+<<<<<<< HEAD
 		Rows:   joinedTableContent,
+=======
+		Rows: joinedTableContent,
+>>>>>>> 9b75ef97574a916d7015ee75c2f31d31047a65d8
 	}
 	if !compareDataset(expectedDataset, results) {
 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
@@ -264,7 +272,11 @@ func TestLab2FullyCentralized(t *testing.T) {
 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
 	expectedDataset := Dataset{
 		Schema: joinedTableSchema,
+<<<<<<< HEAD
 		Rows:   joinedTableContent,
+=======
+		Rows: joinedTableContent,
+>>>>>>> 9b75ef97574a916d7015ee75c2f31d31047a65d8
 	}
 	if !compareDataset(expectedDataset, results) {
 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
@@ -342,7 +354,11 @@ func TestLab2PartiallyOverlapping(t *testing.T) {
 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
 	expectedDataset := Dataset{
 		Schema: joinedTableSchema,
+<<<<<<< HEAD
 		Rows:   joinedTableContent,
+=======
+		Rows: joinedTableContent,
+>>>>>>> 9b75ef97574a916d7015ee75c2f31d31047a65d8
 	}
 	if !compareDataset(expectedDataset, results) {
 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
@@ -353,8 +369,13 @@ func TestLab2PartiallyOverlapping(t *testing.T) {
 func TestLab2EmptyTable(t *testing.T) {
 	setup()
 
+<<<<<<< HEAD
 	courseRegistrationRows = []Row{}
 	joinedTableContent = []Row{}
+=======
+	courseRegistrationRows = []Row {}
+	joinedTableContent = []Row {}
+>>>>>>> 9b75ef97574a916d7015ee75c2f31d31047a65d8
 
 	// use the client to create table and insert
 	// divide student table into two partitions and assign them to node0 and node1
@@ -423,7 +444,11 @@ func TestLab2EmptyTable(t *testing.T) {
 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
 	expectedDataset := Dataset{
 		Schema: joinedTableSchema,
+<<<<<<< HEAD
 		Rows:   joinedTableContent,
+=======
+		Rows: joinedTableContent,
+>>>>>>> 9b75ef97574a916d7015ee75c2f31d31047a65d8
 	}
 	if !compareDataset(expectedDataset, results) {
 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
@@ -440,7 +465,11 @@ func TestLab2NoMatching(t *testing.T) {
 		{11, 0},
 		{12, 2},
 	}
+<<<<<<< HEAD
 	joinedTableContent = []Row{}
+=======
+	joinedTableContent = []Row {}
+>>>>>>> 9b75ef97574a916d7015ee75c2f31d31047a65d8
 
 	// use the client to create table and insert
 	// divide student table into two partitions and assign them to node0 and node1
@@ -509,14 +538,14 @@ func TestLab2NoMatching(t *testing.T) {
 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
 	expectedDataset := Dataset{
 		Schema: joinedTableSchema,
-		Rows:   joinedTableContent,
+		Rows: joinedTableContent,
 	}
 	if !compareDataset(expectedDataset, results) {
 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
 	}
 }
 
-func buildTables(cli *labrpc.ClientEnd) {
+func buildTables(cli *labrpc.ClientEnd)  {
 	replyMsg := ""
 	cli.Call("Cluster.BuildTable",
 		[]interface{}{courseRegistrationTableSchema, courseRegistrationTablePartitionRules}, &replyMsg)
