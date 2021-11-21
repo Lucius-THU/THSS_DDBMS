@@ -19,7 +19,8 @@ import (
 type Cluster struct {
 	// the identifiers of each node, we use simple numbers like "1,2,3" to register the nodes in the network
 	// needless to say, each identifier should be unique
-	nodeIds []string
+	nodeIds      []string
+	tableName2id map[string][]string
 	// the network that the cluster works on. It is not actually using the network interface, but a network simulator
 	// using SEDA (google it if you have not heard about it), which allows us (and you) to inject some network failures
 	// during tests. Do remember that network failures should always be concerned in a distributed environment.
@@ -44,7 +45,7 @@ func NewCluster(nodeNum int, network *labrpc.Network, clusterName string) *Clust
 	labgob.Register(Row{})
 	labgob.Register(Predicate{})
 	labgob.Register(json.Number(""))
-
+	tableName2id := make(map[string][]string)
 	nodeIds := make([]string, nodeNum)
 	nodeNamePrefix := "Node"
 	for i := 0; i < nodeNum; i++ {
@@ -66,7 +67,7 @@ func NewCluster(nodeNum int, network *labrpc.Network, clusterName string) *Clust
 	}
 
 	// create a cluster with the nodes and the network
-	c := &Cluster{nodeIds: nodeIds, network: network, Name: clusterName}
+	c := &Cluster{nodeIds: nodeIds, network: network, Name: clusterName, tableName2id: tableName2id}
 	// create a coordinator for the cluster to receive external requests, the steps are similar to those above.
 	// notice that we use the reference of the cluster as the name of the coordinator server,
 	// and the names can be more than strings.
@@ -109,47 +110,104 @@ func (c *Cluster) SayHello(visitor string, reply *string) {
 // as a list of rows and set it to reply.
 func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 	//TODO lab2
-	endNamePrefix := "InternalClient"
-	// 先获取表头
-	table_schema_judge1 := false
-	table_schema_judge2 := false
-	table_schemas1 := make([]ColumnSchema, 0)
-	table_schemas2 := make([]ColumnSchema, 0)
-	for _, nodeId := range c.nodeIds {
-		if table_schema_judge1 && table_schema_judge2 {
-			break
-		}
-		endName := endNamePrefix + nodeId
-		end := c.network.MakeEnd(endName)
-		c.network.Connect(endName, nodeId)
-		c.network.Enable(endName, true)
-		table := Dataset{}
-		if table_schema_judge1 == false {
-			end.Call("Node.ScanTable", tableNames[0], &table)
-			if table.Schema.TableName != "" {
-				table_schema_judge1 = true
-				table_schemas1 = append(table_schemas1, table.Schema.ColumnSchemas...)
+	// 开始根据节点连接数据
+
+	result_rows := make([]Row, 0)
+	newColumns := make([]ColumnSchema, 0)
+	same_columns1 := make([]int, 0)
+	same_columns2 := make([]int, 0)
+	table1_columns := make([]ColumnSchema, 0)
+	table2_columns := make([]ColumnSchema, 0)
+	if len(tableNames) >= 2 {
+
+		// 获取完整的表头
+		tableName1 := tableNames[0]
+		tableName2 := tableNames[1]
+		table1_ids := c.tableName2id[tableName1]
+		table2_ids := c.tableName2id[tableName2]
+		endNamePrefix := "InternalClient"
+		for _, nodeId := range c.nodeIds {
+			endName := endNamePrefix + nodeId
+			end := c.network.MakeEnd(endName)
+			c.network.Connect(endName, nodeId)
+			c.network.Enable(endName, true)
+			if len(table1_columns) != 0 && len(table2_columns) != 0 {
+				break
+			}
+			if len(table1_columns) == 0 {
+				end.Call("Node.GetFullSchema", tableName1, &table1_columns)
+			}
+			if len(table2_columns) == 0 {
+				end.Call("Node.GetFullSchema", tableName2, &table2_columns)
 			}
 		}
-		table = Dataset{}
-		if table_schema_judge2 == false {
-			end.Call("Node.ScanTable", tableNames[1], &table)
-			if table.Schema.TableName != "" {
-				table_schemas2 = append(table_schemas2, table.Schema.ColumnSchemas...)
-				table_schema_judge2 = true
+		createJoinSchema([]interface{}{table1_columns, table2_columns}, &newColumns, &same_columns1, &same_columns2)
+
+		if len(same_columns1) != 0 {
+			need_join := true
+			for _, id1 := range table1_ids {
+				lineOfTable1 := getLineByid(c, tableName1, id1, table1_columns)
+				if lineOfTable1.Schema.TableName == "" {
+					continue
+				}
+				for _, id2 := range table2_ids {
+					lineOfTable2 := getLineByid(c, tableName2, id2, table2_columns)
+					if lineOfTable2.Schema.TableName == "" {
+						continue
+					}
+					subRow1 := lineOfTable1.Rows[0]
+					subRow2 := lineOfTable2.Rows[0]
+					join_data := true
+					for i := 0; i < len(same_columns1); i++ {
+						if subRow1[same_columns1[i]] != subRow2[same_columns2[i]] {
+							join_data = false
+							break
+						}
+					}
+					if join_data == false {
+						continue
+					}
+					ind := 0
+					for i, val := range subRow2 {
+						if i >= len(same_columns2) {
+							subRow1 = append(subRow1, subRow2[i:]...)
+							break
+						} else {
+							if i != same_columns2[ind] {
+								subRow1 = append(subRow1, val)
+							} else {
+								ind++
+							}
+						}
+					}
+					result_rows = append(result_rows, subRow1)
+				}
+				if need_join == false {
+					break
+				}
 			}
 		}
 	}
 
+	result := Dataset{}
+	result.Schema = TableSchema{TableName: "", ColumnSchemas: newColumns}
+	result.Rows = result_rows
+	*reply = result
+}
+
+func createJoinSchema(args []interface{}, newColumns *[]ColumnSchema, same_columns1 *[]int, same_columns2 *[]int) {
+	table_schemas1 := args[0].([]ColumnSchema)
+	table_schemas2 := args[1].([]ColumnSchema)
+
 	// 获取相同列的索引
-	same_columns1 := make([]int, 0)
-	same_columns2 := make([]int, 0)
+	sameColumns1 := make([]int, 0)
+	sameColumns2 := make([]int, 0)
 
 	for ind1, col1 := range table_schemas1 {
 		for ind2, col2 := range table_schemas2 {
 			if col1 == col2 {
-				same_columns1 = append(same_columns1, ind1)
-				same_columns2 = append(same_columns2, ind2)
+				sameColumns1 = append(sameColumns1, ind1)
+				sameColumns2 = append(sameColumns2, ind2)
 				break
 			}
 		}
@@ -158,80 +216,62 @@ func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 	result_columns := table_schemas1 // 添加表一表头
 	// 添加表2的表头
 	i := 0
-	same_size := len(same_columns2)
+	same_size := len(sameColumns2)
 	for ind1, col1 := range table_schemas2 {
-		if i < same_size && ind1 == same_columns2[i] {
+		if i < same_size && ind1 == sameColumns2[i] {
 			i++
 			continue
 		}
 		result_columns = append(result_columns, col1)
 	}
+	*newColumns = result_columns
+	*same_columns1 = sameColumns1
+	*same_columns2 = sameColumns2
+}
 
-	// 开始根据节点连接数据
-	result_rows := make([]Row, 0)
-	for _, nodeId1 := range c.nodeIds {
-		endName1 := endNamePrefix + nodeId1
-		end1 := c.network.MakeEnd(endName1)
-		c.network.Connect(endName1, nodeId1)
-		c.network.Enable(endName1, true)
-		table1 := Dataset{}
-		end1.Call("Node.ScanTable", tableNames[0], &table1)
-		if table1.Schema.TableName == "" {
+func getLineByid(c *Cluster, tableName string, id string, fullSchema []ColumnSchema) Dataset {
+	endNamePrefix := "InternalClient"
+
+	resultColumns := make([]ColumnSchema, 0)
+	var resultRow Row
+	Rows := make([]Row, 1)
+
+	for _, nodeId := range c.nodeIds {
+		endName := endNamePrefix + nodeId
+		end := c.network.MakeEnd(endName)
+		c.network.Connect(endName, nodeId)
+		c.network.Enable(endName, true)
+		line := Dataset{}
+		end.Call("Node.ScanLineData", []interface{}{tableName, id}, &line)
+		if line.Schema.TableName == "" || len(line.Rows) == 0 || len(line.Rows[0]) == 0 {
 			continue
 		}
-		for _, nodeId2 := range c.nodeIds {
-			endName2 := endNamePrefix + nodeId2
-			end2 := c.network.MakeEnd(endName2)
-			c.network.Connect(endName2, nodeId2)
-			c.network.Enable(endName2, true)
-			table2 := Dataset{}
-			end2.Call("Node.ScanTable", tableNames[1], &table2)
-			if table2.Schema.TableName == "" {
-				continue
-			}
+		resultColumns = append(resultColumns, line.Schema.ColumnSchemas[1:]...)
+		resultRow = append(resultRow, line.Rows[0][1:]...)
+	}
 
-			// 开始连接
-			tableRows1 := table1.Rows
-			tableRows2 := table2.Rows
-
-			for _, val1 := range tableRows1 { // 直接遍历四个值
-				for _, val2 := range tableRows2 {
-					all_same := true
-					for i = 0; i < same_size; i++ {
-						if val1[same_columns1[i]] != val2[same_columns2[i]] {
-							all_same = false
-							break
-						}
-					}
-					// 需要连接的情况
-					if all_same {
-						var subRow Row = val1
-						k := 0
-						j := 0
-						for j = 0; j < len(val2); j++ {
-							if k < same_size && j == same_columns2[k] {
-								k++
-								continue
-							}
-							subRow = append(subRow, val2[j])
-						}
-						result_rows = append(result_rows, subRow)
-						//fmt.Println("lalala")
-					}
-				}
+	for _, col1 := range fullSchema {
+		for j, col2 := range resultColumns {
+			if col1 == col2 {
+				Rows[0] = append(Rows[0], resultRow[j])
+				break
 			}
 		}
 	}
-	result := Dataset{}
-	result.Schema = TableSchema{TableName: "", ColumnSchemas: result_columns}
-	result.Rows = result_rows
-	*reply = result
+	resultSet := Dataset{}
+	if len(Rows) > 0 {
+		resultSet.Schema = TableSchema{TableName: tableName, ColumnSchemas: resultColumns}
+		resultSet.Rows = Rows
+	}
+
+	return resultSet
 }
 
 func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 	schema := params[0].(TableSchema)
 	schema.ColumnSchemas = append(schema.ColumnSchemas, ColumnSchema{Name: "id", DataType: TypeString})
 	rules := make(map[string]Rule)
+	c.tableName2id[schema.TableName] = make([]string, 0)
 
 	decoder := json.NewDecoder(bytes.NewReader(params[1].([]byte)))
 	decoder.UseNumber()
@@ -266,7 +306,9 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
 	tableName := params[0].(string)
 	row := params[1].(Row)
-	row = append(row, uuid.New().String())
+	uuid := uuid.New().String()
+	c.tableName2id[tableName] = append(c.tableName2id[tableName], uuid)
+	row = append(row, uuid)
 	*reply = "1 Not Insert"
 
 	endNamePrefix := "InternalClient"

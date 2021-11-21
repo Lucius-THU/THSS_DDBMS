@@ -109,6 +109,42 @@ func (n *Node) ScanTable(tableName string, dataset *Dataset) {
 	}
 }
 
+// return a row which has id in tableName
+// args: tableName string, id string
+func (n *Node) ScanLineData(args []interface{}, dataset *Dataset) {
+	tableName := args[0].(string)
+	id := args[1].(string)
+
+	if t, ok := n.TableMap[tableName]; ok {
+		resultSet := Dataset{}
+
+		tableRows := make([]Row, 1)
+
+		iterator := t.RowIterator()
+		for iterator.HasNext() {
+			row := *iterator.Next()
+			if row[0] == id {
+				tableRows[0] = row
+				break
+			}
+		}
+
+		resultSet.Rows = tableRows
+		resultSet.Schema = *t.schema
+		*dataset = resultSet
+
+	}
+}
+
+// return a full schema of TableName
+func (n *Node) GetFullSchema(tableName string, schema *[]ColumnSchema) {
+	res := make([]ColumnSchema, 0)
+	if t, ok := n.TableMap[tableName]; ok {
+		res = t.fullSchema.ColumnSchemas[0 : len(t.fullSchema.ColumnSchemas)-1]
+	}
+	*schema = res
+}
+
 func (n *Node) RPCCreateTable(args []interface{}, reply *string) {
 	schema := args[0].(TableSchema)
 	predicate := args[1].(Predicate)
