@@ -106,6 +106,44 @@ func TestLab3NonOverlapping(t *testing.T) {
 				"sid", "name", "age", "grade",
 			},
 		},
+	}
+	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
+
+	buildTablesLab3(cli)
+	insertDataLab3(cli)
+
+	// perform a join and check the result
+	results := Dataset{}
+	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
+	expectedDataset := Dataset{
+		Schema: joinedTableSchema,
+		Rows: joinedTableContent,
+	}
+	if !datasetDuplicateChecking(expectedDataset, results) {
+		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
+	}
+}
+
+
+// student table is distributed to node0 and node1, courseRegistration table is distributed to node1 and node2
+func TestLab3PartiallyOverlapping(t *testing.T) {
+	setupLab3()
+
+	// use the client to create table and insert
+	// divide student table into two partitions and assign them to node0, node1, node 2 and node 3
+	m := map[string]interface{}{
+		"0|1": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  "<=",
+					"val": 3.6,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
 		"1|2": map[string]interface{}{
 			"predicate": map[string]interface{}{
 				"grade": [...]map[string]interface{}{{
