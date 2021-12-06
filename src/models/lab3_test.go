@@ -4,7 +4,6 @@ import (
 	"../labrpc"
 	"encoding/json"
 	"testing"
-	"fmt"
 )
 
 const studentTableName = "student"
@@ -106,6 +105,155 @@ func TestLab3NonOverlapping(t *testing.T) {
 				"sid", "name", "age", "grade",
 			},
 		},
+		"1|2": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  ">",
+					"val": 3.6,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
+	}
+	studentTablePartitionRules, _ = json.Marshal(m)
+
+	// assign course registration to node2
+	m = map[string]interface{}{
+		"3": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"courseId": [...]map[string]interface{}{{
+					"op":  ">=",
+					"val": 0,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "courseId",
+			},
+		},
+	}
+	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
+
+	buildTablesLab3(cli)
+	insertDataLab3(cli)
+
+	// perform a join and check the result
+	results := Dataset{}
+	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
+	expectedDataset := Dataset{
+		Schema: joinedTableSchema,
+		Rows: joinedTableContent,
+	}
+	if !datasetDuplicateChecking(expectedDataset, results) {
+		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
+	}
+}
+
+// student table is held by node 0, 1, 2 and courseRegistration is held by node 0, 1, 2
+func TestLab3FullyOverlapping(t *testing.T) {
+	setupLab3()
+
+	// use the client to create table and insert
+	// divide student table into two partitions and assign their replica to node0 and node1
+	m := map[string]interface{}{
+		"0|1": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  "<=",
+					"val": 3.6,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
+		"1|2": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  ">",
+					"val": 3.6,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
+	}
+	studentTablePartitionRules, _ = json.Marshal(m)
+
+	// assign course registration to node 0, 1
+	m = map[string]interface{}{
+		"0|1": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"courseId": [...]map[string]interface{}{{
+					"op":  ">=",
+					"val": 0,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "courseId",
+			},
+		},
+	}
+	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
+
+	buildTablesLab3(cli)
+	insertDataLab3(cli)
+
+	// perform a join and check the result
+	results := Dataset{}
+	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
+	expectedDataset := Dataset{
+		Schema: joinedTableSchema,
+		Rows: joinedTableContent,
+	}
+	if !datasetDuplicateChecking(expectedDataset, results) {
+		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
+	}
+}
+
+// two tables are distributed to node0
+func TestLab3FullyCentralized(t *testing.T) {
+	setupLab3()
+
+	// use the client to create table and insert
+	// divide student table into two partitions and assign them to node0 and node1
+	m := map[string]interface{}{
+		"0|1": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  ">=",
+					"val": 0.0,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
+	}
+	studentTablePartitionRules, _ = json.Marshal(m)
+
+	// assign course registration to node0
+	m = map[string]interface{}{
+		"0|1": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"courseId": [...]map[string]interface{}{{
+					"op":  ">=",
+					"val": 0,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "courseId",
+			},
+		},
 	}
 	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
 
@@ -159,13 +307,25 @@ func TestLab3PartiallyOverlapping(t *testing.T) {
 	}
 	studentTablePartitionRules, _ = json.Marshal(m)
 
-	// assign course registration to node2
+	// assign course registration to node1 and node2
 	m = map[string]interface{}{
-		"3": map[string]interface{}{
+		"0|3": map[string]interface{}{
 			"predicate": map[string]interface{}{
 				"courseId": [...]map[string]interface{}{{
-					"op":  ">=",
-					"val": 0,
+					"op":  "<=",
+					"val": 1,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "courseId",
+			},
+		},
+		"3|2": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"courseId": [...]map[string]interface{}{{
+					"op":  ">",
+					"val": 1,
 				},
 				},
 			},
@@ -182,9 +342,6 @@ func TestLab3PartiallyOverlapping(t *testing.T) {
 	// perform a join and check the result
 	results := Dataset{}
 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
-
-	fmt.Println("getResult")
-
 	expectedDataset := Dataset{
 		Schema: joinedTableSchema,
 		Rows: joinedTableContent,
@@ -194,371 +351,172 @@ func TestLab3PartiallyOverlapping(t *testing.T) {
 	}
 }
 
-// // student table is held by node 0, 1, 2 and courseRegistration is held by node 0, 1, 2
-// func TestLab3FullyOverlapping(t *testing.T) {
-// 	setupLab3()
+// courseRegistration table is empty in this test
+func TestLab3EmptyTable(t *testing.T) {
+	setupLab3()
 
-// 	// use the client to create table and insert
-// 	// divide student table into two partitions and assign their replica to node0 and node1
-// 	m := map[string]interface{}{
-// 		"0|1": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  "<=",
-// 					"val": 3.6,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 		"1|2": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  ">",
-// 					"val": 3.6,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 	}
-// 	studentTablePartitionRules, _ = json.Marshal(m)
+	courseRegistrationRows = []Row {}
+	joinedTableContent = []Row {}
 
-// 	// assign course registration to node 0, 1
-// 	m = map[string]interface{}{
-// 		"0|1": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"courseId": [...]map[string]interface{}{{
-// 					"op":  ">=",
-// 					"val": 0,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "courseId",
-// 			},
-// 		},
-// 	}
-// 	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
+	// use the client to create table and insert
+	// divide student table into two partitions and assign them to node0 and node1
+	m := map[string]interface{}{
+		"0|1": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  "<=",
+					"val": 3.6,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
+		"1|2": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  ">",
+					"val": 3.6,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
+	}
+	studentTablePartitionRules, _ = json.Marshal(m)
 
-// 	buildTablesLab3(cli)
-// 	insertDataLab3(cli)
+	// assign course registration to node1 and node2
+	m = map[string]interface{}{
+		"1|3": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"courseId": [...]map[string]interface{}{{
+					"op":  "<=",
+					"val": 1,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "courseId",
+			},
+		},
+		"2|0": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"courseId": [...]map[string]interface{}{{
+					"op":  ">",
+					"val": 1,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "courseId",
+			},
+		},
+	}
+	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
 
-// 	// perform a join and check the result
-// 	results := Dataset{}
-// 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
-// 	expectedDataset := Dataset{
-// 		Schema: joinedTableSchema,
-// 		Rows: joinedTableContent,
-// 	}
-// 	if !datasetDuplicateChecking(expectedDataset, results) {
-// 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
-// 	}
-// }
+	buildTablesLab3(cli)
+	insertDataLab3(cli)
 
-// // two tables are distributed to node0
-// func TestLab3FullyCentralized(t *testing.T) {
-// 	setupLab3()
+	// perform a join and check the result
+	results := Dataset{}
+	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
+	expectedDataset := Dataset{
+		Schema: joinedTableSchema,
+		Rows: joinedTableContent,
+	}
+	if !datasetDuplicateChecking(expectedDataset, results) {
+		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
+	}
+}
 
-// 	// use the client to create table and insert
-// 	// divide student table into two partitions and assign them to node0 and node1
-// 	m := map[string]interface{}{
-// 		"0|1": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  ">=",
-// 					"val": 0.0,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 	}
-// 	studentTablePartitionRules, _ = json.Marshal(m)
+// there is no matching tuple in this test
+func TestLab3NoMatching(t *testing.T) {
+	setupLab3()
 
-// 	// assign course registration to node0
-// 	m = map[string]interface{}{
-// 		"0|1": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"courseId": [...]map[string]interface{}{{
-// 					"op":  ">=",
-// 					"val": 0,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "courseId",
-// 			},
-// 		},
-// 	}
-// 	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
+	courseRegistrationRows = []Row{
+		{10, 0},
+		{10, 1},
+		{11, 0},
+		{12, 2},
+	}
+	joinedTableContent = []Row {}
 
-// 	buildTablesLab3(cli)
-// 	insertDataLab3(cli)
+	// use the client to create table and insert
+	// divide student table into two partitions and assign them to node0 and node1
+	m := map[string]interface{}{
+		"0|1": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  "<=",
+					"val": 3.6,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
+		"1|2": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"grade": [...]map[string]interface{}{{
+					"op":  ">",
+					"val": 3.6,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "name", "age", "grade",
+			},
+		},
+	}
+	studentTablePartitionRules, _ = json.Marshal(m)
 
-// 	// perform a join and check the result
-// 	results := Dataset{}
-// 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
-// 	expectedDataset := Dataset{
-// 		Schema: joinedTableSchema,
-// 		Rows: joinedTableContent,
-// 	}
-// 	if !datasetDuplicateChecking(expectedDataset, results) {
-// 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
-// 	}
-// }
+	// assign course registration to node1 and node2
+	m = map[string]interface{}{
+		"1": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"courseId": [...]map[string]interface{}{{
+					"op":  "<=",
+					"val": 1,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "courseId",
+			},
+		},
+		"2|3": map[string]interface{}{
+			"predicate": map[string]interface{}{
+				"courseId": [...]map[string]interface{}{{
+					"op":  ">",
+					"val": 1,
+				},
+				},
+			},
+			"column": [...]string{
+				"sid", "courseId",
+			},
+		},
+	}
+	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
 
+	buildTablesLab3(cli)
+	insertDataLab3(cli)
 
-// // student table is distributed to node0 and node1, courseRegistration table is distributed to node1 and node2
-// func TestLab3PartiallyOverlapping(t *testing.T) {
-// 	setupLab3()
-
-// 	// use the client to create table and insert
-// 	// divide student table into two partitions and assign them to node0, node1, node 2 and node 3
-// 	m := map[string]interface{}{
-// 		"0|1": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  "<=",
-// 					"val": 3.6,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 		"1|2": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  ">",
-// 					"val": 3.6,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 	}
-// 	studentTablePartitionRules, _ = json.Marshal(m)
-
-// 	// assign course registration to node1 and node2
-// 	m = map[string]interface{}{
-// 		"0|3": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"courseId": [...]map[string]interface{}{{
-// 					"op":  "<=",
-// 					"val": 1,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "courseId",
-// 			},
-// 		},
-// 		"3|2": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"courseId": [...]map[string]interface{}{{
-// 					"op":  ">",
-// 					"val": 1,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "courseId",
-// 			},
-// 		},
-// 	}
-// 	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
-
-// 	buildTablesLab3(cli)
-// 	insertDataLab3(cli)
-
-// 	// perform a join and check the result
-// 	results := Dataset{}
-// 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
-// 	expectedDataset := Dataset{
-// 		Schema: joinedTableSchema,
-// 		Rows: joinedTableContent,
-// 	}
-// 	if !datasetDuplicateChecking(expectedDataset, results) {
-// 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
-// 	}
-// }
-
-// // courseRegistration table is empty in this test
-// func TestLab3EmptyTable(t *testing.T) {
-// 	setupLab3()
-
-// 	courseRegistrationRows = []Row {}
-// 	joinedTableContent = []Row {}
-
-// 	// use the client to create table and insert
-// 	// divide student table into two partitions and assign them to node0 and node1
-// 	m := map[string]interface{}{
-// 		"0|1": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  "<=",
-// 					"val": 3.6,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 		"1|2": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  ">",
-// 					"val": 3.6,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 	}
-// 	studentTablePartitionRules, _ = json.Marshal(m)
-
-// 	// assign course registration to node1 and node2
-// 	m = map[string]interface{}{
-// 		"1|3": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"courseId": [...]map[string]interface{}{{
-// 					"op":  "<=",
-// 					"val": 1,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "courseId",
-// 			},
-// 		},
-// 		"2|0": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"courseId": [...]map[string]interface{}{{
-// 					"op":  ">",
-// 					"val": 1,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "courseId",
-// 			},
-// 		},
-// 	}
-// 	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
-
-// 	buildTablesLab3(cli)
-// 	insertDataLab3(cli)
-
-// 	// perform a join and check the result
-// 	results := Dataset{}
-// 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
-// 	expectedDataset := Dataset{
-// 		Schema: joinedTableSchema,
-// 		Rows: joinedTableContent,
-// 	}
-// 	if !datasetDuplicateChecking(expectedDataset, results) {
-// 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
-// 	}
-// }
-
-// // there is no matching tuple in this test
-// func TestLab3NoMatching(t *testing.T) {
-// 	setupLab3()
-
-// 	courseRegistrationRows = []Row{
-// 		{10, 0},
-// 		{10, 1},
-// 		{11, 0},
-// 		{12, 2},
-// 	}
-// 	joinedTableContent = []Row {}
-
-// 	// use the client to create table and insert
-// 	// divide student table into two partitions and assign them to node0 and node1
-// 	m := map[string]interface{}{
-// 		"0|1": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  "<=",
-// 					"val": 3.6,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 		"1|2": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"grade": [...]map[string]interface{}{{
-// 					"op":  ">",
-// 					"val": 3.6,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "name", "age", "grade",
-// 			},
-// 		},
-// 	}
-// 	studentTablePartitionRules, _ = json.Marshal(m)
-
-// 	// assign course registration to node1 and node2
-// 	m = map[string]interface{}{
-// 		"1": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"courseId": [...]map[string]interface{}{{
-// 					"op":  "<=",
-// 					"val": 1,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "courseId",
-// 			},
-// 		},
-// 		"2|3": map[string]interface{}{
-// 			"predicate": map[string]interface{}{
-// 				"courseId": [...]map[string]interface{}{{
-// 					"op":  ">",
-// 					"val": 1,
-// 				},
-// 				},
-// 			},
-// 			"column": [...]string{
-// 				"sid", "courseId",
-// 			},
-// 		},
-// 	}
-// 	courseRegistrationTablePartitionRules, _ = json.Marshal(m)
-
-// 	buildTablesLab3(cli)
-// 	insertDataLab3(cli)
-
-// 	// perform a join and check the result
-// 	results := Dataset{}
-// 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
-// 	expectedDataset := Dataset{
-// 		Schema: joinedTableSchema,
-// 		Rows: joinedTableContent,
-// 	}
-// 	if !datasetDuplicateChecking(expectedDataset, results) {
-// 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
-// 	}
-// }
+	// perform a join and check the result
+	results := Dataset{}
+	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
+	expectedDataset := Dataset{
+		Schema: joinedTableSchema,
+		Rows: joinedTableContent,
+	}
+	if !datasetDuplicateChecking(expectedDataset, results) {
+		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
+	}
+}
 
 
 // compare two datasets with replica, ignoring the names of them and the order of columns and rows
