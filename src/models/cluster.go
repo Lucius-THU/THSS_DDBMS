@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"../labgob"
 	"../labrpc"
@@ -109,7 +110,6 @@ func (c *Cluster) SayHello(visitor string, reply *string) {
 // Join all tables in the given list using NATURAL JOIN (join on the common columns), and return the joined result
 // as a list of rows and set it to reply.
 func (c *Cluster) Join(tableNames []string, reply *Dataset) {
-	//TODO lab2
 	// 开始根据节点连接数据
 
 	result_rows := make([]Row, 0)
@@ -143,15 +143,24 @@ func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 		}
 		createJoinSchema([]interface{}{table1_columns, table2_columns}, &newColumns, &same_columns1, &same_columns2)
 
+		fmt.Println("table1_ids:", table1_ids)
+		fmt.Println("table2_ids:", table2_ids)
+
 		if len(same_columns1) != 0 {
 			need_join := true
 			for _, id1 := range table1_ids {
 				lineOfTable1 := getLineByid(c, tableName1, id1, table1_columns)
+
+				fmt.Println("lineOfTable1:", lineOfTable1)
+
 				if lineOfTable1.Schema.TableName == "" {
 					continue
 				}
 				for _, id2 := range table2_ids {
 					lineOfTable2 := getLineByid(c, tableName2, id2, table2_columns)
+
+					fmt.Println("lineOfTable2", lineOfTable2)
+
 					if lineOfTable2.Schema.TableName == "" {
 						continue
 					}
@@ -280,7 +289,6 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 	nodeNamePrefix := "Node"
 	endNamePrefix := "InternalClient"
 	for key, value := range rules {
-		nodeId := nodeNamePrefix + key
 		ts := &TableSchema{TableName: schema.TableName, ColumnSchemas: make([]ColumnSchema, 0)}
 		ts.ColumnSchemas = append(ts.ColumnSchemas, ColumnSchema{Name: "id", DataType: TypeString})
 		for _, columnName := range value.Column {
@@ -292,14 +300,28 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 			}
 		}
 
-		endName := endNamePrefix + nodeId
-		end := c.network.MakeEnd(endName)
-		c.network.Connect(endName, nodeId)
-		c.network.Enable(endName, true)
-		end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema}, reply)
-		if (*reply)[0] != '0' {
-			return
+		nodeIds := strings.Split(key, "|")
+		for _, nodeId := range nodeIds {
+			nodeName := nodeNamePrefix + nodeId
+			endName := endNamePrefix + nodeName
+			end := c.network.MakeEnd(endName)
+			c.network.Connect(endName, nodeName)
+			c.network.Enable(endName, true)
+			end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema}, reply)
+			if (*reply)[0] != '0' {
+				return
+			}
 		}
+
+		// nodeId := nodeNamePrefix + key
+		// endName := endNamePrefix + nodeId
+		// end := c.network.MakeEnd(endName)
+		// c.network.Connect(endName, nodeId)
+		// c.network.Enable(endName, true)
+		// end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema}, reply)
+		// if (*reply)[0] != '0' {
+		// 	return
+		// }
 	}
 }
 
