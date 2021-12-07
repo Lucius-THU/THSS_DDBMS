@@ -114,31 +114,7 @@ func (c *Cluster) SayHello(visitor string, reply *string) {
 // as a list of rows and set it to reply.
 func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 
-	fmt.Println("\n", "==================Check Nodes================")
-	endNamePrefix := "InternalClient"
-
-	for _, nodeId := range c.nodeIds {
-		endName := endNamePrefix + nodeId
-		end := c.network.MakeEnd(endName)
-		c.network.Connect(endName, nodeId)
-		c.network.Enable(endName, true)
-
-		for i := 0; i < c.tableName2num["student"]; i++ {
-			studentTable := Dataset{}
-			end.Call("Node.ScanTable", "student|" + strconv.Itoa(i), &studentTable)
-			fmt.Println(nodeId, "student|" + strconv.Itoa(i), studentTable)
-		}
-
-		for i := 0; i < c.tableName2num["courseRegistration"]; i++ {
-			courseRegistrationTable := Dataset{}
-			end.Call("Node.ScanTable", "courseRegistration|" + strconv.Itoa(i), &courseRegistrationTable)
-			fmt.Println(nodeId, "courseRegistration|" + strconv.Itoa(i), courseRegistrationTable)
-		}
-	}
-
 	// 开始根据节点连接数据
-	fmt.Println("\n", "====================Join================")
-
 	result_rows := make([]Row, 0)
 	newColumns := make([]ColumnSchema, 0)
 	same_columns1 := make([]int, 0)
@@ -179,17 +155,11 @@ func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 			need_join := true
 			for _, id1 := range table1_ids {
 				lineOfTable1 := getLineByid(c, tableName1, id1, table1_columns)
-
-				fmt.Println("lineOfTable1:", lineOfTable1)
-
 				if lineOfTable1.Schema.TableName == "" {
 					continue
 				}
 				for _, id2 := range table2_ids {
 					lineOfTable2 := getLineByid(c, tableName2, id2, table2_columns)
-
-					fmt.Println("lineOfTable2", lineOfTable2)
-
 					if lineOfTable2.Schema.TableName == "" {
 						continue
 					}
@@ -316,8 +286,6 @@ func getLineByid(c *Cluster, tableName string, id string, fullSchema []ColumnSch
 }
 
 func (c *Cluster) BuildTable(params []interface{}, reply *string) {
-	fmt.Println("===================Build Table===================")
-
 	schema := params[0].(TableSchema)
 	schema.ColumnSchemas = append(schema.ColumnSchemas, ColumnSchema{Name: "id", DataType: TypeString})
 	rules := make(map[string]Rule)
@@ -326,7 +294,6 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 	decoder := json.NewDecoder(bytes.NewReader(params[1].([]byte)))
 	decoder.UseNumber()
 	decoder.Decode(&rules)
-	fmt.Println("rules", rules)
 	c.tableName2num[schema.TableName] = len(rules)
 
 	nodeNamePrefix := "Node"
@@ -353,7 +320,6 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 			c.network.Connect(endName, nodeName)
 			c.network.Enable(endName, true)
 			end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema}, reply)
-			fmt.Println("\t", key, nodeId, *reply)
 			if (*reply)[0] != '0' {
 				return
 			}
@@ -362,15 +328,12 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 }
 
 func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
-	fmt.Println("\n", "===================Fragment write===================")
 	tableName := params[0].(string)
 	row := params[1].(Row)
 	uuid := uuid.New().String()
 	c.tableName2id[tableName] = append(c.tableName2id[tableName], uuid)
 	row = append(row, uuid)
 	*reply = "1 Not Insert"
-
-	fmt.Println("insertRow:", row)
 
 	endNamePrefix := "InternalClient"
 	for _, nodeId := range c.nodeIds {
@@ -381,7 +344,6 @@ func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
 		replyMsg := ""
 		for i := 0; i < c.tableName2num[tableName]; i++ {
 			end.Call("Node.RPCInsert", []interface{}{tableName + "|" + strconv.Itoa(i), row}, &replyMsg)
-			fmt.Println("\t",nodeId,i,replyMsg)
 			if replyMsg[0] == '0' {
 				*reply = "0 OK"
 			}
