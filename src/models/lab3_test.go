@@ -4,6 +4,7 @@ import (
 	"../labrpc"
 	"encoding/json"
 	"testing"
+	"fmt"
 )
 
 const studentTableName = "student"
@@ -143,10 +144,16 @@ func TestLab3NonOverlapping(t *testing.T) {
 	// perform a join and check the result
 	results := Dataset{}
 	cli.Call("Cluster.Join", []string{studentTableName, courseRegistrationTableName}, &results)
+
+	fmt.Println("join finish")
+
 	expectedDataset := Dataset{
 		Schema: joinedTableSchema,
 		Rows: joinedTableContent,
 	}
+
+	fmt.Println("expectedDataset", expectedDataset)
+
 	if !datasetDuplicateChecking(expectedDataset, results) {
 		t.Errorf("Incorrect join results, expected %v, actual %v", expectedDataset, results)
 	}

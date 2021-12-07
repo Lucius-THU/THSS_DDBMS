@@ -22,6 +22,8 @@ type Cluster struct {
 	// needless to say, each identifier should be unique
 	nodeIds      []string
 	tableName2id map[string][]string
+	// how many rules does this table have (How many copies of this table can a node have at most)
+	tableName2num map[string]int
 	// the network that the cluster works on. It is not actually using the network interface, but a network simulator
 	// using SEDA (google it if you have not heard about it), which allows us (and you) to inject some network failures
 	// during tests. Do remember that network failures should always be concerned in a distributed environment.
@@ -47,6 +49,7 @@ func NewCluster(nodeNum int, network *labrpc.Network, clusterName string) *Clust
 	labgob.Register(Predicate{})
 	labgob.Register(json.Number(""))
 	tableName2id := make(map[string][]string)
+	tableName2num := make(map[string]int)
 	nodeIds := make([]string, nodeNum)
 	nodeNamePrefix := "Node"
 	for i := 0; i < nodeNum; i++ {
@@ -68,7 +71,7 @@ func NewCluster(nodeNum int, network *labrpc.Network, clusterName string) *Clust
 	}
 
 	// create a cluster with the nodes and the network
-	c := &Cluster{nodeIds: nodeIds, network: network, Name: clusterName, tableName2id: tableName2id}
+	c := &Cluster{nodeIds: nodeIds, network: network, Name: clusterName, tableName2id: tableName2id, tableName2num: tableName2num}
 	// create a coordinator for the cluster to receive external requests, the steps are similar to those above.
 	// notice that we use the reference of the cluster as the name of the coordinator server,
 	// and the names can be more than strings.
@@ -110,7 +113,31 @@ func (c *Cluster) SayHello(visitor string, reply *string) {
 // Join all tables in the given list using NATURAL JOIN (join on the common columns), and return the joined result
 // as a list of rows and set it to reply.
 func (c *Cluster) Join(tableNames []string, reply *Dataset) {
+
+	fmt.Println("\n", "==================Check Nodes================")
+	endNamePrefix := "InternalClient"
+
+	for _, nodeId := range c.nodeIds {
+		endName := endNamePrefix + nodeId
+		end := c.network.MakeEnd(endName)
+		c.network.Connect(endName, nodeId)
+		c.network.Enable(endName, true)
+
+		for i := 0; i < c.tableName2num["student"]; i++ {
+			studentTable := Dataset{}
+			end.Call("Node.ScanTable", "student|" + strconv.Itoa(i), &studentTable)
+			fmt.Println(nodeId, "student|" + strconv.Itoa(i), studentTable)
+		}
+
+		for i := 0; i < c.tableName2num["courseRegistration"]; i++ {
+			courseRegistrationTable := Dataset{}
+			end.Call("Node.ScanTable", "courseRegistration|" + strconv.Itoa(i), &courseRegistrationTable)
+			fmt.Println(nodeId, "courseRegistration|" + strconv.Itoa(i), courseRegistrationTable)
+		}
+	}
+
 	// 开始根据节点连接数据
+	fmt.Println("\n", "====================Join================")
 
 	result_rows := make([]Row, 0)
 	newColumns := make([]ColumnSchema, 0)
@@ -135,16 +162,18 @@ func (c *Cluster) Join(tableNames []string, reply *Dataset) {
 				break
 			}
 			if len(table1_columns) == 0 {
-				end.Call("Node.GetFullSchema", tableName1, &table1_columns)
+				for i := 0; i < c.tableName2num[tableName1]; i++ {
+					end.Call("Node.GetFullSchema", tableName1+"|"+strconv.Itoa(i), &table1_columns)
+				}
 			}
 			if len(table2_columns) == 0 {
-				end.Call("Node.GetFullSchema", tableName2, &table2_columns)
+				for i := 0; i < c.tableName2num[tableName2]; i++ {
+					end.Call("Node.GetFullSchema", tableName2+"|"+strconv.Itoa(i), &table2_columns)
+				}
 			}
 		}
-		createJoinSchema([]interface{}{table1_columns, table2_columns}, &newColumns, &same_columns1, &same_columns2)
 
-		fmt.Println("table1_ids:", table1_ids)
-		fmt.Println("table2_ids:", table2_ids)
+		createJoinSchema([]interface{}{table1_columns, table2_columns}, &newColumns, &same_columns1, &same_columns2)
 
 		if len(same_columns1) != 0 {
 			need_join := true
@@ -244,17 +273,27 @@ func getLineByid(c *Cluster, tableName string, id string, fullSchema []ColumnSch
 	resultColumns := make([]ColumnSchema, 0)
 	var resultRow Row
 	Rows := make([]Row, 1)
-
+	ret_tablename := ""
 	for _, nodeId := range c.nodeIds {
 		endName := endNamePrefix + nodeId
 		end := c.network.MakeEnd(endName)
 		c.network.Connect(endName, nodeId)
 		c.network.Enable(endName, true)
+
 		line := Dataset{}
-		end.Call("Node.ScanLineData", []interface{}{tableName, id}, &line)
-		if line.Schema.TableName == "" || len(line.Rows) == 0 || len(line.Rows[0]) == 0 {
+		find := false
+		for i := 0; i < c.tableName2num[tableName]; i++ {
+			end.Call("Node.ScanLineData", []interface{}{tableName+"|"+strconv.Itoa(i), id}, &line)
+			if line.Schema.TableName != "" && len(line.Rows) > 0 && len(line.Rows[0]) > 0 {
+				find = true
+				break
+			}
+		}
+		if !find {
 			continue
 		}
+
+		ret_tablename = tableName
 		resultColumns = append(resultColumns, line.Schema.ColumnSchemas[1:]...)
 		resultRow = append(resultRow, line.Rows[0][1:]...)
 	}
@@ -269,7 +308,7 @@ func getLineByid(c *Cluster, tableName string, id string, fullSchema []ColumnSch
 	}
 	resultSet := Dataset{}
 	if len(Rows) > 0 {
-		resultSet.Schema = TableSchema{TableName: tableName, ColumnSchemas: resultColumns}
+		resultSet.Schema = TableSchema{TableName: ret_tablename, ColumnSchemas: fullSchema}
 		resultSet.Rows = Rows
 	}
 
@@ -277,6 +316,8 @@ func getLineByid(c *Cluster, tableName string, id string, fullSchema []ColumnSch
 }
 
 func (c *Cluster) BuildTable(params []interface{}, reply *string) {
+	fmt.Println("===================Build Table===================")
+
 	schema := params[0].(TableSchema)
 	schema.ColumnSchemas = append(schema.ColumnSchemas, ColumnSchema{Name: "id", DataType: TypeString})
 	rules := make(map[string]Rule)
@@ -285,11 +326,15 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 	decoder := json.NewDecoder(bytes.NewReader(params[1].([]byte)))
 	decoder.UseNumber()
 	decoder.Decode(&rules)
+	fmt.Println("rules", rules)
+	c.tableName2num[schema.TableName] = len(rules)
 
 	nodeNamePrefix := "Node"
 	endNamePrefix := "InternalClient"
+	i := 0
 	for key, value := range rules {
-		ts := &TableSchema{TableName: schema.TableName, ColumnSchemas: make([]ColumnSchema, 0)}
+		ts := &TableSchema{TableName: schema.TableName + "|" + strconv.Itoa(i), ColumnSchemas: make([]ColumnSchema, 0)}
+		i++
 		ts.ColumnSchemas = append(ts.ColumnSchemas, ColumnSchema{Name: "id", DataType: TypeString})
 		for _, columnName := range value.Column {
 			for _, cs := range schema.ColumnSchemas {
@@ -308,30 +353,24 @@ func (c *Cluster) BuildTable(params []interface{}, reply *string) {
 			c.network.Connect(endName, nodeName)
 			c.network.Enable(endName, true)
 			end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema}, reply)
+			fmt.Println("\t", key, nodeId, *reply)
 			if (*reply)[0] != '0' {
 				return
 			}
 		}
-
-		// nodeId := nodeNamePrefix + key
-		// endName := endNamePrefix + nodeId
-		// end := c.network.MakeEnd(endName)
-		// c.network.Connect(endName, nodeId)
-		// c.network.Enable(endName, true)
-		// end.Call("Node.RPCCreateTable", []interface{}{ts, value.Predicate, schema}, reply)
-		// if (*reply)[0] != '0' {
-		// 	return
-		// }
 	}
 }
 
 func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
+	fmt.Println("\n", "===================Fragment write===================")
 	tableName := params[0].(string)
 	row := params[1].(Row)
 	uuid := uuid.New().String()
 	c.tableName2id[tableName] = append(c.tableName2id[tableName], uuid)
 	row = append(row, uuid)
 	*reply = "1 Not Insert"
+
+	fmt.Println("insertRow:", row)
 
 	endNamePrefix := "InternalClient"
 	for _, nodeId := range c.nodeIds {
@@ -340,9 +379,12 @@ func (c *Cluster) FragmentWrite(params []interface{}, reply *string) {
 		c.network.Connect(endName, nodeId)
 		c.network.Enable(endName, true)
 		replyMsg := ""
-		end.Call("Node.RPCInsert", []interface{}{tableName, row}, &replyMsg)
-		if replyMsg[0] == '0' {
-			*reply = "0 OK"
+		for i := 0; i < c.tableName2num[tableName]; i++ {
+			end.Call("Node.RPCInsert", []interface{}{tableName + "|" + strconv.Itoa(i), row}, &replyMsg)
+			fmt.Println("\t",nodeId,i,replyMsg)
+			if replyMsg[0] == '0' {
+				*reply = "0 OK"
+			}
 		}
 	}
 }
